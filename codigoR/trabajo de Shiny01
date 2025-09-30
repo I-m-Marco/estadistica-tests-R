@@ -1,0 +1,130 @@
+# Instalar si no tienes shiny
+# install.packages("shiny")
+
+library(shiny)
+
+ui <- fluidPage(
+  titlePanel("Regresión Lineal - App Interactiva"),
+  
+  sidebarLayout(
+    sidebarPanel(
+      h3("Navegación"),
+      selectInput("menu", "Selecciona un apartado:",
+                  choices = c("Introducción", 
+                              "Simulación", 
+                              "Tamaño de Muestra",
+                              "Interpretación",
+                              "Recursos")),
+      hr(),
+      conditionalPanel(
+        condition = "input.menu == 'Simulación'",
+        numericInput("n", "Número de observaciones:", 50, min = 10, max = 500),
+        sliderInput("beta0", "Intercepto (β0):", -5, 5, 2),
+        sliderInput("beta1", "Pendiente (β1):", -5, 5, 1),
+        sliderInput("sigma", "Desviación estándar del error:", 0.1, 5, 1, step = 0.1),
+        actionButton("go", "Generar datos")
+      ),
+      conditionalPanel(
+        condition = "input.menu == 'Tamaño de Muestra'",
+        sliderInput("nsize", "Tamaño de muestra:", 30, 500, 50),
+        numericInput("beta1_true", "Valor verdadero de β1:", 1, -5, 5),
+        actionButton("calc", "Calcular Estimaciones")
+      )
+    ),
+    
+    mainPanel(
+      uiOutput("contenido")
+    )
+  )
+)
+
+server <- function(input, output, session) {
+  
+  # --- CONTENIDOS ---
+  output$contenido <- renderUI({
+    if (input$menu == "Introducción") {
+      tagList(
+        h2("📘 Introducción a la Regresión Lineal"),
+        p("La regresión lineal es un método estadístico que busca modelar la relación entre una variable dependiente (Y) y una o más variables independientes (X)."),
+        withMathJax("Modelo simple: $$ Y_i = \\beta_0 + \\beta_1 X_i + \\varepsilon_i $$"),
+        p("Donde:"),
+        tags$ul(
+          tags$li("β0: Intercepto"),
+          tags$li("β1: Pendiente (efecto de X sobre Y)"),
+          tags$li("ε: Error aleatorio, asumido normal con media 0 y varianza σ²")
+        )
+      )
+    }
+    else if (input$menu == "Simulación") {
+      tagList(
+        h2("🎲 Simulación de Regresión"),
+        plotOutput("scatter"),
+        verbatimTextOutput("modelo")
+      )
+    }
+    else if (input$menu == "Tamaño de Muestra") {
+      tagList(
+        h2("📊 Estudio del Tamaño de Muestra"),
+        plotOutput("histBeta1"),
+        p("A mayor tamaño de muestra, menor varianza en la estimación de los parámetros.")
+      )
+    }
+    else if (input$menu == "Interpretación") {
+      tagList(
+        h2("📝 Redacción e Interpretación"),
+        p("Ejemplo: Si β1 = 2.5, significa que por cada aumento de 1 unidad en X, la variable dependiente Y aumenta en promedio 2.5 unidades."),
+        p("La significancia estadística se evalúa mediante la prueba t y el valor-p.")
+      )
+    }
+    else if (input$menu == "Recursos") {
+      tagList(
+        h2("📚 Recursos Adicionales"),
+        tags$ul(
+          tags$li(a("Regresión Lineal - Wikipedia", href="https://es.wikipedia.org/wiki/Regresi%C3%B3n_lineal", target="_blank")),
+          tags$li(a("Libro: Introducción a la Econometría - Wooldridge", href="https://www.wooldridge.com", target="_blank")),
+          tags$li("Curso de R y Shiny en CRAN")
+        )
+      )
+    }
+  })
+  
+  # --- SIMULACIÓN ---
+  datos <- eventReactive(input$go, {
+    set.seed(123)
+    x <- rnorm(input$n, 0, 1)
+    y <- input$beta0 + input$beta1 * x + rnorm(input$n, 0, input$sigma)
+    data.frame(x, y)
+  })
+  
+  output$scatter <- renderPlot({
+    req(datos())
+    plot(datos()$x, datos()$y, main="Simulación de Regresión Lineal",
+         xlab="X", ylab="Y", pch=19, col="blue")
+    abline(lm(y ~ x, data = datos()), col="red", lwd=2)
+  })
+  
+  output$modelo <- renderPrint({
+    req(datos())
+    summary(lm(y ~ x, data = datos()))
+  })
+  
+  # --- TAMAÑO DE MUESTRA ---
+  simulaciones <- eventReactive(input$calc, {
+    beta1_est <- replicate(1000, {
+      x <- rnorm(input$nsize, 0, 1)
+      y <- 2 + input$beta1_true * x + rnorm(input$nsize, 0, 1)
+      coef(lm(y ~ x))[2]
+    })
+    beta1_est
+  })
+  
+  output$histBeta1 <- renderPlot({
+    req(simulaciones())
+    hist(simulaciones(), col="lightblue", border="white",
+         main="Distribución de las estimaciones de β1",
+         xlab="Estimaciones de β1")
+    abline(v = input$beta1_true, col="red", lwd=2)
+  })
+}
+
+shinyApp(ui, server)
