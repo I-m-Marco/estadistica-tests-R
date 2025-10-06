@@ -1,0 +1,694 @@
+# Instalar librerías si no las tienes
+# install.packages(c("shiny", "shinythemes", "DT"))
+
+library(shiny)
+library(shinythemes)
+library(DT)
+
+ui <- navbarPage(
+  title = "📊 Regresión Lineal - App Avanzada",
+  theme = shinytheme("cosmo"),
+  
+  # ============ TAB 1: INTRODUCCIÓN ============
+  tabPanel("📘 Introducción",
+           fluidRow(
+             column(12,
+                    div(style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                        color:white; padding:30px; border-radius:15px; margin:20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);",
+                        h1("Regresión Lineal Simple", style="font-weight:700;"),
+                        hr(style="border-color:white;"),
+                        h3("¿Qué es la Regresión Lineal?"),
+                        p("La regresión lineal es una técnica estadística que modela la relación entre una variable 
+                          dependiente (Y) y una o más variables independientes (X). Permite predecir valores y 
+                          cuantificar la fuerza de la relación entre variables.", 
+                          style="font-size:16px; line-height:1.8;"),
+                        
+                        withMathJax(),
+                        div(style="background:rgba(255,255,255,0.1); padding:20px; border-radius:10px; margin:20px 0;",
+                            h4("Modelo de Regresión Lineal Simple:"),
+                            "$$Y_i = \\beta_0 + \\beta_1 X_i + \\varepsilon_i$$",
+                            tags$ul(
+                              tags$li("\\(Y_i\\): Variable dependiente (respuesta)"),
+                              tags$li("\\(X_i\\): Variable independiente (predictora)"),
+                              tags$li("\\(\\beta_0\\): Intercepto (valor de Y cuando X=0)"),
+                              tags$li("\\(\\beta_1\\): Pendiente (cambio en Y por unidad de X)"),
+                              tags$li("\\(\\varepsilon_i\\): Error aleatorio (residuo)")
+                            )
+                        ),
+                        
+                        h4("Supuestos del Modelo:"),
+                        tags$ol(
+                          tags$li("Linealidad: La relación entre X e Y es lineal"),
+                          tags$li("Independencia: Las observaciones son independientes"),
+                          tags$li("Homocedasticidad: Varianza constante de los errores"),
+                          tags$li("Normalidad: Los errores siguen una distribución normal"),
+                          tags$li("No multicolinealidad: En regresión múltiple")
+                        )
+                    )
+             )
+           ),
+           
+           fluidRow(
+             column(6,
+                    div(style="background:#f8f9fa; padding:20px; border-radius:10px; margin:20px; 
+                        border-left:5px solid #667eea;",
+                        h4("📊 Interpretación de Coeficientes"),
+                        p("Si \\(\\beta_1 = 2.5\\):"),
+                        tags$ul(
+                          tags$li("Por cada aumento de 1 unidad en X, Y aumenta en promedio 2.5 unidades"),
+                          tags$li("Si \\(\\beta_1 > 0\\): relación positiva"),
+                          tags$li("Si \\(\\beta_1 < 0\\): relación negativa"),
+                          tags$li("Si \\(\\beta_1 = 0\\): no hay relación lineal")
+                        )
+                    )
+             ),
+             column(6,
+                    div(style="background:#f8f9fa; padding:20px; border-radius:10px; margin:20px; 
+                        border-left:5px solid #764ba2;",
+                        h4("📈 Coeficiente de Determinación (R²)"),
+                        p("Mide la proporción de variabilidad en Y explicada por X:"),
+                        "$$R^2 = 1 - \\frac{\\sum(Y_i - \\hat{Y}_i)^2}{\\sum(Y_i - \\bar{Y})^2}$$",
+                        tags$ul(
+                          tags$li("R² = 0: X no explica Y"),
+                          tags$li("R² = 1: Ajuste perfecto"),
+                          tags$li("0 < R² < 1: Ajuste parcial")
+                        )
+                    )
+             )
+           )
+  ),
+  
+  # ============ TAB 2: ANÁLISIS DE DATOS ============
+  tabPanel("🎲 Análisis de Datos",
+           sidebarLayout(
+             sidebarPanel(
+               width = 3,
+               div(style="background:#f8f9fa; padding:15px; border-radius:10px;",
+                   h4("⚙️ Configuración", style="color:#667eea;"),
+                   hr(),
+                   
+                   fileInput("file", "📂 Cargar datos (CSV/Excel)", 
+                             accept = c(".csv", ".xlsx", ".xls")),
+                   
+                   conditionalPanel(
+                     condition = "input.file == null",
+                     h5("O simular datos:"),
+                     numericInput("n", "Número de observaciones:", 100, min=30, max=1000, step=10),
+                     numericInput("beta0", "Intercepto (β₀):", 5, step=0.5),
+                     numericInput("beta1", "Pendiente (β₁):", 2, step=0.5),
+                     numericInput("sigma", "Desv. estándar error:", 2, min=0.1, step=0.1)
+                   ),
+                   
+                   actionButton("simular", "🚀 Generar/Analizar", 
+                                class="btn btn-primary btn-block",
+                                style="margin-top:10px; font-weight:bold;")
+               )
+             ),
+             
+             mainPanel(
+               width = 9,
+               tabsetPanel(
+                 tabPanel("📊 Datos",
+                          br(),
+                          DTOutput("tabla")
+                 ),
+                 
+                 tabPanel("📈 Gráfico Principal",
+                          br(),
+                          plotOutput("grafico_principal", height="500px", hover = "plot_hover"),
+                          verbatimTextOutput("info_hover")
+                 ),
+                 
+                 tabPanel("📋 Resumen del Modelo",
+                          br(),
+                          div(style="background:#f8f9fa; padding:20px; border-radius:10px;",
+                              verbatimTextOutput("resumen_modelo")
+                          ),
+                          br(),
+                          fluidRow(
+                            column(3,
+                                   div(style="background:#667eea; color:white; padding:15px; 
+                                       border-radius:10px; text-align:center;",
+                                       h4(textOutput("r2_val"), style="margin:0;"),
+                                       p("R²", style="margin:5px 0 0 0;")
+                                   )
+                            ),
+                            column(3,
+                                   div(style="background:#764ba2; color:white; padding:15px; 
+                                       border-radius:10px; text-align:center;",
+                                       h4(textOutput("r2_adj_val"), style="margin:0;"),
+                                       p("R² Ajustado", style="margin:5px 0 0 0;")
+                                   )
+                            ),
+                            column(3,
+                                   div(style="background:#f093fb; color:white; padding:15px; 
+                                       border-radius:10px; text-align:center;",
+                                       h4(textOutput("rmse_val"), style="margin:0;"),
+                                       p("RMSE", style="margin:5px 0 0 0;")
+                                   )
+                            ),
+                            column(3,
+                                   div(style="background:#4facfe; color:white; padding:15px; 
+                                       border-radius:10px; text-align:center;",
+                                       h4(textOutput("pval_val"), style="margin:0;"),
+                                       p("p-valor (β₁)", style="margin:5px 0 0 0;")
+                                   )
+                            )
+                          ),
+                          br(),
+                          div(style="background:#d4edda; padding:15px; border-radius:10px; border-left:5px solid #28a745;",
+                              h5("✅ Ecuación de Regresión:"),
+                              h4(textOutput("ecuacion"), style="color:#155724; font-family:monospace;")
+                          )
+                 ),
+                 
+                 tabPanel("🔍 Diagnósticos",
+                          br(),
+                          fluidRow(
+                            column(6, plotOutput("diag_residuos", height="350px")),
+                            column(6, plotOutput("diag_qq", height="350px"))
+                          ),
+                          fluidRow(
+                            column(6, plotOutput("diag_scale_location", height="350px")),
+                            column(6, plotOutput("diag_leverage", height="350px"))
+                          ),
+                          br(),
+                          div(style="background:#fff3cd; padding:15px; border-radius:10px; border-left:5px solid #ffc107;",
+                              h5("💡 Interpretación de Diagnósticos:"),
+                              tags$ul(
+                                tags$li("Residuos vs Ajustados: Debe mostrar un patrón aleatorio (sin forma)"),
+                                tags$li("Q-Q Normal: Los puntos deben seguir la línea diagonal"),
+                                tags$li("Scale-Location: Debe mostrar dispersión constante"),
+                                tags$li("Residuos vs Leverage: Identifica observaciones influyentes")
+                              )
+                          )
+                 ),
+                 
+                 tabPanel("✅ Pruebas de Supuestos",
+                          br(),
+                          div(style="background:#f8f9fa; padding:20px; border-radius:10px;",
+                              h4("Prueba de Normalidad (Shapiro-Wilk)"),
+                              verbatimTextOutput("test_normalidad"),
+                              uiOutput("interpretacion_normalidad"),
+                              hr(),
+                              h4("Análisis de Homocedasticidad"),
+                              plotOutput("test_homocedasticidad", height="300px"),
+                              verbatimTextOutput("test_homocedasticidad_texto")
+                          )
+                 )
+               )
+             )
+           )
+  ),
+  
+  # ============ TAB 3: SIMULACIONES ============
+  tabPanel("🎯 Simulaciones",
+           fluidRow(
+             column(12,
+                    div(style="background:#f8f9fa; padding:20px; border-radius:10px; margin:20px;",
+                        h3("Simulación Monte Carlo: Distribución de Estimadores"),
+                        p("Esta simulación muestra cómo se distribuyen las estimaciones de β₁ 
+                          cuando repetimos el experimento múltiples veces.")
+                    )
+             )
+           ),
+           
+           fluidRow(
+             column(4,
+                    div(style="background:white; padding:20px; border-radius:10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);",
+                        h4("Parámetros de Simulación"),
+                        sliderInput("n_sim", "Número de simulaciones:", 100, 2000, 1000, step=100),
+                        sliderInput("nsize", "Tamaño de muestra:", 30, 500, 100, step=10),
+                        numericInput("beta1_true", "Valor verdadero de β₁:", 1.5, step=0.1),
+                        numericInput("sigma_sim", "Desviación estándar del error:", 1, min=0.1, step=0.1),
+                        actionButton("calc", "🎲 Ejecutar Simulación", 
+                                     class="btn btn-success btn-block",
+                                     style="font-weight:bold;")
+                    )
+             ),
+             
+             column(8,
+                    plotOutput("hist_beta1", height="400px"),
+                    br(),
+                    div(style="background:#d1ecf1; padding:15px; border-radius:10px; border-left:5px solid #0c5460;",
+                        h5("📊 Estadísticas de la Simulación:"),
+                        verbatimTextOutput("stats_sim")
+                    )
+             )
+           )
+  ),
+  
+  # ============ TAB 4: PREDICCIONES ============
+  tabPanel("🔮 Predicciones",
+           fluidRow(
+             column(4,
+                    div(style="background:white; padding:20px; border-radius:10px; 
+                        box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin:20px;",
+                        h4("Calcular Predicción"),
+                        p("Ingresa un valor de X para predecir Y:"),
+                        numericInput("x_pred", "Valor de X:", 5, step=0.5),
+                        sliderInput("conf_level", "Nivel de confianza:", 
+                                    min=80, max=99, value=95, step=1, post="%"),
+                        actionButton("pred_btn", "📈 Predecir", 
+                                     class="btn btn-info btn-block")
+                    )
+             ),
+             
+             column(8,
+                    div(style="margin:20px;",
+                        uiOutput("resultado_pred"),
+                        br(),
+                        plotOutput("grafico_pred", height="400px")
+                    )
+             )
+           )
+  ),
+  
+  # ============ TAB 5: REFERENCIAS ============
+  tabPanel("📚 Referencias",
+           fluidRow(
+             column(12,
+                    div(style="margin:20px;",
+                        h2("📖 Bibliografía Recomendada"),
+                        hr(),
+                        
+                        h4("Libros Fundamentales:"),
+                        tags$ol(
+                          tags$li(tags$b("Faraway, J. J. (2014)."), 
+                                  tags$em("Linear Models with R"), 
+                                  ". Chapman and Hall/CRC. - Excelente para implementación en R"),
+                          tags$li(tags$b("James, G., Witten, D., Hastie, T., & Tibshirani, R. (2021)."), 
+                                  tags$em("An Introduction to Statistical Learning with Applications in R"), 
+                                  ". Springer. - Disponible gratis en línea"),
+                          tags$li(tags$b("Kutner, M. H., et al. (2005)."), 
+                                  tags$em("Applied Linear Statistical Models"), 
+                                  ". McGraw-Hill. - Texto clásico y completo"),
+                          tags$li(tags$b("Montgomery, D. C., Peck, E. A., & Vining, G. G. (2012)."), 
+                                  tags$em("Introduction to Linear Regression Analysis"), 
+                                  ". Wiley. - Enfoque aplicado"),
+                          tags$li(tags$b("Fox, J. (2015)."), 
+                                  tags$em("Applied Regression Analysis and Generalized Linear Models"), 
+                                  ". Sage Publications."),
+                          tags$li(tags$b("Sheather, S. J. (2009)."), 
+                                  tags$em("A Modern Approach to Regression with R"), 
+                                  ". Springer.")
+                        ),
+                        
+                        br(),
+                        h4("Recursos en Español:"),
+                        tags$ul(
+                          tags$li(tags$b("Peña, D. (2002)."), 
+                                  tags$em("Regresión y diseño de experimentos"), 
+                                  ". Alianza Editorial."),
+                          tags$li(tags$b("Gutiérrez, H. & De la Vara, R. (2012)."), 
+                                  tags$em("Análisis y diseño de experimentos"), 
+                                  ". McGraw-Hill."),
+                          tags$li(tags$b("Fernández, S. & Cordero, J. M. (2014)."), 
+                                  tags$em("Estadística descriptiva"), 
+                                  ". ESIC Editorial.")
+                        ),
+                        
+                        br(),
+                        h4("Recursos en Línea:"),
+                        tags$ul(
+                          tags$li(a("Introduction to Statistical Learning (Libro gratuito)", 
+                                    href="https://www.statlearning.com/", target="_blank")),
+                          tags$li(a("Quick-R: Regression", 
+                                    href="https://www.statmethods.net/stats/regression.html", target="_blank")),
+                          tags$li(a("R Documentation - lm()", 
+                                    href="https://www.rdocumentation.org/packages/stats/versions/3.6.2/topics/lm", target="_blank")),
+                          tags$li(a("CRAN Task View: Statistics", 
+                                    href="https://cran.r-project.org/web/views/", target="_blank")),
+                          tags$li(a("R-bloggers: Regresión Lineal", 
+                                    href="https://www.r-bloggers.com/", target="_blank"))
+                        ),
+                        
+                        br(),
+                        h4("Paquetes de R Utilizados:"),
+                        tags$ul(
+                          tags$li(tags$b("shiny:"), " Framework para aplicaciones web interactivas"),
+                          tags$li(tags$b("shinythemes:"), " Temas CSS para mejorar la apariencia"),
+                          tags$li(tags$b("DT:"), " Tablas interactivas con DataTables"),
+                          tags$li(tags$b("stats (base R):"), " Funciones estadísticas básicas (lm, predict, etc.)")
+                        ),
+                        
+                        br(),
+                        div(style="background:#e7f3ff; padding:20px; border-radius:10px; border-left:5px solid #2196F3;",
+                            h4("💻 Tutoriales en Video:"),
+                            tags$ul(
+                              tags$li("StatQuest - Regresión Lineal explicada visualmente"),
+                              tags$li("DataCamp - Introducción a R y Regresión"),
+                              tags$li("Coursera - Especialización en Estadística con R (Johns Hopkins)"),
+                              tags$li("YouTube - Canales recomendados: StatQuest, MarinStatsLectures")
+                            )
+                        )
+                    )
+             )
+           )
+  )
+)
+
+server <- function(input, output, session) {
+  
+  # ========== DATOS ==========
+  datos <- eventReactive(input$simular, {
+    if (!is.null(input$file)) {
+      ext <- tools::file_ext(input$file$name)
+      tryCatch({
+        if (ext == "csv") {
+          df <- read.csv(input$file$datapath)
+        } else if (ext %in% c("xlsx", "xls")) {
+          # Usar read.csv con un mensaje si no está disponible readxl
+          if (requireNamespace("readxl", quietly = TRUE)) {
+            df <- readxl::read_excel(input$file$datapath)
+          } else {
+            showNotification("Por favor instala el paquete 'readxl' para cargar archivos Excel", 
+                             type = "warning")
+            return(NULL)
+          }
+        } else {
+          showNotification("Formato no soportado. Usa CSV o Excel", type = "error")
+          return(NULL)
+        }
+        return(as.data.frame(df))
+      }, error = function(e) {
+        showNotification(paste("Error al cargar el archivo:", e$message), type = "error")
+        return(NULL)
+      })
+    } else {
+      set.seed(123)
+      x <- rnorm(input$n, 10, 3)
+      y <- input$beta0 + input$beta1 * x + rnorm(input$n, 0, input$sigma)
+      return(data.frame(X = x, Y = y))
+    }
+  })
+  
+  # ========== MODELO ==========
+  modelo <- reactive({
+    req(datos())
+    df <- datos()
+    if (ncol(df) >= 2) {
+      lm(df[,2] ~ df[,1])
+    } else {
+      NULL
+    }
+  })
+  
+  # ========== TABLA DE DATOS ==========
+  output$tabla <- renderDT({
+    req(datos())
+    datatable(datos(), 
+              options = list(pageLength = 10, scrollX = TRUE),
+              rownames = FALSE,
+              class = 'cell-border stripe')
+  })
+  
+  # ========== GRÁFICO PRINCIPAL ==========
+  output$grafico_principal <- renderPlot({
+    req(datos(), modelo())
+    df <- datos()
+    mod <- modelo()
+    
+    par(bg = "#f8f9fa", mar = c(5, 5, 4, 2))
+    plot(df[,1], df[,2], 
+         main = "Regresión Lineal Simple",
+         xlab = names(df)[1], 
+         ylab = names(df)[2],
+         pch = 19, 
+         col = rgb(102/255, 126/255, 234/255, 0.6),
+         cex = 1.5,
+         cex.main = 1.5,
+         cex.lab = 1.2,
+         las = 1)
+    
+    abline(mod, col = "#764ba2", lwd = 3)
+    
+    grid(col = "white", lwd = 2)
+    
+    legend("topleft", 
+           legend = c("Datos observados", "Línea de regresión"),
+           col = c(rgb(102/255, 126/255, 234/255, 0.6), "#764ba2"),
+           pch = c(19, NA),
+           lty = c(NA, 1),
+           lwd = c(NA, 3),
+           cex = 1.1,
+           bg = "white")
+  })
+  
+  output$info_hover <- renderText({
+    req(input$plot_hover, datos())
+    hover <- input$plot_hover
+    paste0("X = ", round(hover$x, 2), ", Y = ", round(hover$y, 2))
+  })
+  
+  # ========== RESUMEN DEL MODELO ==========
+  output$resumen_modelo <- renderPrint({
+    req(modelo())
+    summary(modelo())
+  })
+  
+  # ========== ECUACIÓN ==========
+  output$ecuacion <- renderText({
+    req(modelo())
+    coefs <- coef(modelo())
+    sprintf("Ŷ = %.4f + %.4f * X", coefs[1], coefs[2])
+  })
+  
+  # ========== MÉTRICAS ==========
+  output$r2_val <- renderText({
+    req(modelo())
+    sprintf("%.4f", summary(modelo())$r.squared)
+  })
+  
+  output$r2_adj_val <- renderText({
+    req(modelo())
+    sprintf("%.4f", summary(modelo())$adj.r.squared)
+  })
+  
+  output$rmse_val <- renderText({
+    req(modelo())
+    sprintf("%.4f", sqrt(mean(residuals(modelo())^2)))
+  })
+  
+  output$pval_val <- renderText({
+    req(modelo())
+    pval <- summary(modelo())$coefficients[2, 4]
+    if (pval < 0.001) "< 0.001" else sprintf("%.4f", pval)
+  })
+  
+  # ========== DIAGNÓSTICOS ==========
+  output$diag_residuos <- renderPlot({
+    req(modelo())
+    par(bg = "#f8f9fa", mar = c(5, 5, 4, 2))
+    plot(modelo(), which = 1, col = "#667eea", pch = 19, cex = 1.2)
+  })
+  
+  output$diag_qq <- renderPlot({
+    req(modelo())
+    par(bg = "#f8f9fa", mar = c(5, 5, 4, 2))
+    plot(modelo(), which = 2, col = "#667eea", pch = 19, cex = 1.2)
+  })
+  
+  output$diag_scale_location <- renderPlot({
+    req(modelo())
+    par(bg = "#f8f9fa", mar = c(5, 5, 4, 2))
+    plot(modelo(), which = 3, col = "#667eea", pch = 19, cex = 1.2)
+  })
+  
+  output$diag_leverage <- renderPlot({
+    req(modelo())
+    par(bg = "#f8f9fa", mar = c(5, 5, 4, 2))
+    plot(modelo(), which = 5, col = "#667eea", pch = 19, cex = 1.2)
+  })
+  
+  # ========== PRUEBAS DE SUPUESTOS ==========
+  output$test_normalidad <- renderPrint({
+    req(modelo())
+    shapiro.test(residuals(modelo()))
+  })
+  
+  output$interpretacion_normalidad <- renderUI({
+    req(modelo())
+    test <- shapiro.test(residuals(modelo()))
+    if (test$p.value > 0.05) {
+      div(style="background:#d4edda; padding:10px; border-radius:5px; margin-top:10px;",
+          p("✅ No se rechaza normalidad (p > 0.05). Los residuos parecen seguir una distribución normal."))
+    } else {
+      div(style="background:#f8d7da; padding:10px; border-radius:5px; margin-top:10px;",
+          p("⚠️ Se rechaza normalidad (p < 0.05). Los residuos no siguen una distribución normal."))
+    }
+  })
+  
+  output$test_homocedasticidad <- renderPlot({
+    req(modelo())
+    par(bg = "#f8f9fa", mar = c(5, 5, 4, 2))
+    plot(fitted(modelo()), abs(residuals(modelo())),
+         main = "Gráfico de Dispersión para Homocedasticidad",
+         xlab = "Valores Ajustados",
+         ylab = "|Residuos|",
+         pch = 19,
+         col = rgb(102/255, 126/255, 234/255, 0.6),
+         cex = 1.2)
+    abline(h = mean(abs(residuals(modelo()))), col = "#764ba2", lwd = 2, lty = 2)
+  })
+  
+  output$test_homocedasticidad_texto <- renderPrint({
+    req(modelo())
+    cat("Si los puntos se distribuyen uniformemente alrededor de la línea horizontal,\n")
+    cat("existe homocedasticidad (varianza constante).\n\n")
+    cat("Si forman un patrón de embudo, hay heterocedasticidad.\n")
+  })
+  
+  # ========== SIMULACIONES ==========
+  simulaciones <- eventReactive(input$calc, {
+    withProgress(message = 'Ejecutando simulaciones...', value = 0, {
+      beta1_est <- replicate(input$n_sim, {
+        incProgress(1/input$n_sim)
+        x <- rnorm(input$nsize, 0, 1)
+        y <- 2 + input$beta1_true * x + rnorm(input$nsize, 0, input$sigma_sim)
+        coef(lm(y ~ x))[2]
+      })
+      beta1_est
+    })
+  })
+  
+  output$hist_beta1 <- renderPlot({
+    req(simulaciones())
+    sims <- simulaciones()
+    
+    par(bg = "#f8f9fa", mar = c(5, 5, 4, 2))
+    hist(sims, 
+         breaks = 50,
+         col = rgb(102/255, 126/255, 234/255, 0.7),
+         border = "white",
+         main = paste("Distribución de", input$n_sim, "estimaciones de β₁"),
+         xlab = "Estimación de β₁",
+         ylab = "Frecuencia",
+         cex.main = 1.5,
+         cex.lab = 1.2,
+         las = 1)
+    
+    abline(v = input$beta1_true, col = "red", lwd = 3, lty = 2)
+    abline(v = mean(sims), col = "#764ba2", lwd = 3, lty = 2)
+    
+    legend("topright",
+           legend = c("Valor verdadero", "Media de estimaciones"),
+           col = c("red", "#764ba2"),
+           lwd = 3,
+           lty = 2,
+           bg = "white",
+           cex = 1.1)
+  })
+  
+  output$stats_sim <- renderPrint({
+    req(simulaciones())
+    sims <- simulaciones()
+    cat("═══════════════════════════════════════════\n")
+    cat("Valor verdadero de β₁:     ", sprintf("%.6f", input$beta1_true), "\n")
+    cat("Media de estimaciones:     ", sprintf("%.6f", mean(sims)), "\n")
+    cat("Mediana de estimaciones:   ", sprintf("%.6f", median(sims)), "\n")
+    cat("Desviación estándar:       ", sprintf("%.6f", sd(sims)), "\n")
+    cat("Sesgo:                     ", sprintf("%.6f", mean(sims) - input$beta1_true), "\n")
+    cat("Error cuadrático medio:    ", sprintf("%.6f", mean((sims - input$beta1_true)^2)), "\n")
+    cat("Mínimo:                    ", sprintf("%.6f", min(sims)), "\n")
+    cat("Máximo:                    ", sprintf("%.6f", max(sims)), "\n")
+    cat("═══════════════════════════════════════════\n")
+  })
+  
+  # ========== PREDICCIONES ==========
+  prediccion <- eventReactive(input$pred_btn, {
+    req(modelo())
+    new_data <- data.frame(x = input$x_pred)
+    names(new_data) <- names(datos())[1]
+    
+    pred_int <- predict(modelo(), newdata = new_data, 
+                        interval = "prediction", level = input$conf_level/100)
+    conf_int <- predict(modelo(), newdata = new_data, 
+                        interval = "confidence", level = input$conf_level/100)
+    
+    list(pred_int = pred_int, conf_int = conf_int)
+  })
+  
+  output$resultado_pred <- renderUI({
+    req(prediccion())
+    pred <- prediccion()
+    
+    div(style="background:#d1ecf1; padding:20px; border-radius:10px; border-left:5px solid #0c5460;",
+        h4(paste("Predicción para X =", input$x_pred)),
+        tags$ul(
+          tags$li(tags$b("Valor predicho de Y:"), sprintf("%.3f", pred$pred_int[1])),
+          tags$li(tags$b(paste0("Intervalo de predicción (", input$conf_level, "%):") ),
+                  sprintf("[%.3f, %.3f]", pred$pred_int[2], pred$pred_int[3])),
+          tags$li(tags$b(paste0("Intervalo de confianza (", input$conf_level, "%):") ),
+                  sprintf("[%.3f, %.3f]", pred$conf_int[2], pred$conf_int[3]))
+        ),
+        p("El intervalo de predicción es más amplio porque considera la variabilidad 
+          adicional de observaciones individuales.", style="margin-top:15px; font-style:italic;")
+    )
+  })
+  
+  output$grafico_pred <- renderPlot({
+    req(datos(), modelo(), prediccion())
+    df <- datos()
+    mod <- modelo()
+    
+    x_range <- seq(min(df[,1]), max(df[,1]), length.out = 100)
+    new_data <- data.frame(x = x_range)
+    names(new_data) <- names(df)[1]
+    
+    pred_int <- predict(mod, newdata = new_data, interval = "prediction", 
+                        level = input$conf_level/100)
+    conf_int <- predict(mod, newdata = new_data, interval = "confidence", 
+                        level = input$conf_level/100)
+    
+    par(bg = "#f8f9fa", mar = c(5, 5, 4, 2))
+    plot(df[,1], df[,2],
+         main = "Intervalos de Confianza y Predicción",
+         xlab = names(df)[1],
+         ylab = names(df)[2],
+         pch = 19,
+         col = rgb(102/255, 126/255, 234/255, 0.5),
+         cex = 1.2,
+         cex.main = 1.5,
+         cex.lab = 1.2,
+         las = 1)
+    
+    # Intervalo de predicción (más amplio)
+    polygon(c(x_range, rev(x_range)), 
+            c(pred_int[,2], rev(pred_int[,3])),
+            col = rgb(102/255, 126/255, 234/255, 0.2),
+            border = NA)
+    
+    # Intervalo de confianza (más estrecho)
+    polygon(c(x_range, rev(x_range)), 
+            c(conf_int[,2], rev(conf_int[,3])),
+            col = rgb(118/255, 75/255, 162/255, 0.3),
+            border = NA)
+    
+    # Línea de regresión
+    lines(x_range, pred_int[,1], col = "#764ba2", lwd = 3)
+    
+    # Punto de predicción
+    points(input$x_pred, prediccion()$pred_int[1], 
+           col = "red", pch = 19, cex = 2.5)
+    
+    # Líneas verticales para el intervalo de predicción
+    segments(input$x_pred, prediccion()$pred_int[2],
+             input$x_pred, prediccion()$pred_int[3],
+             col = "red", lwd = 2, lty = 2)
+    
+    legend("topleft",
+           legend = c("Datos", "Línea de regresión", "IC (media)", "IP (individual)", "Predicción"),
+           col = c(rgb(102/255, 126/255, 234/255, 0.5), "#764ba2", 
+                   rgb(118/255, 75/255, 162/255, 0.3), 
+                   rgb(102/255, 126/255, 234/255, 0.2), "red"),
+           pch = c(19, NA, 15, 15, 19),
+           lty = c(NA, 1, NA, NA, NA),
+           lwd = c(NA, 3, NA, NA, NA),
+           pt.cex = c(1.2, NA, 2, 2, 2.5),
+           bg = "white",
+           cex = 1)
+  })
+}
+
+shinyApp(ui, server)
