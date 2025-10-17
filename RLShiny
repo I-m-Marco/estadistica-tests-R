@@ -1,0 +1,449 @@
+# ============================================================================
+# SIMULADOR MBA-RL COMPACTO
+# Modelos Basados en Agentes + Reinforcement Learning
+# ============================================================================
+
+library(shiny)
+library(ggplot2)
+library(plotly)
+
+# ============================================================================
+# FUNCIONES DEL MODELO
+# ============================================================================
+
+# Inicializar agentes con Q-tables
+inicializar_agentes <- function(n_agentes, n_estados = 3, n_acciones = 2) {
+  agentes <- list()
+  for (i in 1:n_agentes) {
+    agentes[[i]] <- list(
+      id = i,
+      estado = sample(1:n_estados, 1),
+      q_table = matrix(0, nrow = n_estados, ncol = n_acciones),
+      estrategia = "Explorando",
+      recompensa_total = 0,
+      historial = c()
+    )
+  }
+  return(agentes)
+}
+
+# Seleccionar acción con política ε-greedy
+seleccionar_accion <- function(agente, epsilon) {
+  if (runif(1) < epsilon) {
+    return(sample(1:2, 1))  # Exploración
+  } else {
+    q_values <- agente$q_table[agente$estado, ]
+    return(which.max(q_values))  # Explotación
+  }
+}
+
+# Calcular recompensa (Dilema del Prisionero)
+# Cooperar = 1, Competir = 2
+calcular_recompensa <- function(accion_a, accion_b) {
+  if (accion_a == 1 && accion_b == 1) return(3)  # Ambos cooperan
+  if (accion_a == 1 && accion_b == 2) return(-1) # A coopera, B compite
+  if (accion_a == 2 && accion_b == 1) return(5)  # A compite, B coopera
+  return(1)  # Ambos compiten
+}
+
+# Actualizar Q-table con Q-learning
+actualizar_q_table <- function(agente, accion, recompensa, nuevo_estado, alpha, gamma) {
+  q_actual <- agente$q_table[agente$estado, accion]
+  q_max_siguiente <- max(agente$q_table[nuevo_estado, ])
+  
+  # Ecuación Q-learning: Q(s,a) ← Q(s,a) + α[r + γ·max(Q(s',a')) - Q(s,a)]
+  nuevo_q <- q_actual + alpha * (recompensa + gamma * q_max_siguiente - q_actual)
+  
+  agente$q_table[agente$estado, accion] <- nuevo_q
+  agente$estado <- nuevo_estado
+  agente$recompensa_total <- agente$recompensa_total + recompensa
+  agente$historial <- c(agente$historial, accion)
+  
+  return(agente)
+}
+
+# Ejecutar episodio de simulación
+ejecutar_episodio <- function(agentes, epsilon, alpha, gamma) {
+  n_agentes <- length(agentes)
+  recompensa_total <- 0
+  
+  for (paso in 1:20) {
+    acciones <- sapply(agentes, function(a) seleccionar_accion(a, epsilon))
+    
+    for (i in 1:n_agentes) {
+      j <- sample(setdiff(1:n_agentes, i), 1)
+      recompensa <- calcular_recompensa(acciones[i], acciones[j])
+      recompensa_total <- recompensa_total + recompensa
+      
+      nuevo_estado <- sample(1:3, 1)
+      agentes[[i]] <- actualizar_q_table(agentes[[i]], acciones[i], 
+                                         recompensa, nuevo_estado, alpha, gamma)
+    }
+  }
+  
+  # Clasificar estrategias
+  for (i in 1:n_agentes) {
+    if (length(agentes[[i]]$historial) > 10) {
+      prop_coop <- mean(tail(agentes[[i]]$historial, 10) == 1)
+      if (prop_coop > 0.7) {
+        agentes[[i]]$estrategia <- "Cooperador"
+      } else if (prop_coop < 0.3) {
+        agentes[[i]]$estrategia <- "Competidor"
+      } else {
+        agentes[[i]]$estrategia <- "Mixto"
+      }
+    }
+  }
+  
+  return(list(
+    agentes = agentes,
+    recompensa_promedio = recompensa_total / (n_agentes * 20)
+  ))
+}
+
+# ============================================================================
+# INTERFAZ DE USUARIO
+# ============================================================================
+
+ui <- fluidPage(
+  tags$head(
+    tags$style(HTML("
+      body { 
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+        font-family: Arial, sans-serif;
+      }
+      .container-fluid { padding: 20px; }
+      h2 { color: white; font-weight: bold; text-shadow: 2px 2px 4px rgba(0,0,0,0.3); }
+      .well { 
+        background: rgba(255, 255, 255, 0.95); 
+        border-radius: 15px; 
+        box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+      }
+      .btn-primary { 
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+        border: none; 
+        border-radius: 25px; 
+        font-weight: bold;
+        padding: 10px 30px;
+      }
+      .nav-tabs > li > a { color: #764ba2; font-weight: bold; }
+      .tab-content { 
+        background: white; 
+        padding: 20px; 
+        border-radius: 10px; 
+        margin-top: 20px;
+      }
+      .metric-box {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 15px;
+        border-radius: 10px;
+        text-align: center;
+        margin: 10px 0;
+      }
+      .theory-box {
+        background: #f8f9fa;
+        border-left: 4px solid #764ba2;
+        padding: 15px;
+        margin: 15px 0;
+        border-radius: 5px;
+      }
+      .equation {
+        background: #e9ecef;
+        padding: 10px;
+        border-radius: 5px;
+        font-family: 'Courier New', monospace;
+        text-align: center;
+        margin: 10px 0;
+      }
+    "))
+  ),
+  
+  titlePanel(
+    h2("🧠 Simulador MBA-RL: Inteligencia Colectiva Emergente")
+  ),
+  
+  sidebarLayout(
+    sidebarPanel(
+      h4("⚙️ Parámetros del Modelo"),
+      
+      sliderInput("n_agentes", "👥 Número de Agentes:",
+                  min = 5, max = 50, value = 20),
+      
+      sliderInput("n_episodios", "🔄 Episodios:",
+                  min = 10, max = 500, value = 100),
+      
+      sliderInput("alpha", "📈 Tasa de Aprendizaje (α):",
+                  min = 0.01, max = 1, value = 0.1),
+      
+      sliderInput("gamma", "💎 Factor de Descuento (γ):",
+                  min = 0, max = 1, value = 0.9),
+      
+      sliderInput("epsilon", "🎲 Exploración (ε):",
+                  min = 0, max = 1, value = 0.2),
+      
+      br(),
+      actionButton("simular", "🚀 Iniciar Simulación", 
+                   class = "btn-primary", style = "width: 100%;"),
+      
+      br(), br(),
+      div(class = "theory-box",
+          h5("📖 Sobre el Modelo"),
+          p("MBA-RL combina agentes autónomos con aprendizaje por reforzamiento para estudiar comportamientos emergentes.", 
+            style = "font-size: 12px;")
+      )
+    ),
+    
+    mainPanel(
+      tabsetPanel(
+        # Tab 1: Resultados
+        tabPanel("📊 Resultados",
+                 br(),
+                 fluidRow(
+                   column(4, div(class = "metric-box",
+                                 h3(textOutput("val_cooperacion")),
+                                 p("% Cooperación")
+                   )),
+                   column(4, div(class = "metric-box",
+                                 h3(textOutput("val_recompensa")),
+                                 p("Recompensa Promedio")
+                   )),
+                   column(4, div(class = "metric-box",
+                                 h3(textOutput("val_convergencia")),
+                                 p("Episodio Convergencia")
+                   ))
+                 ),
+                 br(),
+                 plotlyOutput("plot_evolucion", height = "400px"),
+                 br(),
+                 fluidRow(
+                   column(6, plotlyOutput("plot_estrategias", height = "300px")),
+                   column(6, plotlyOutput("plot_qmatrix", height = "300px"))
+                 )
+        ),
+        
+        # Tab 2: Teoría
+        tabPanel("📚 Teoría",
+                 br(),
+                 h3("Fundamentos Teóricos"),
+                 
+                 div(class = "theory-box",
+                     h4("1. Q-Learning"),
+                     p("Algoritmo de aprendizaje por reforzamiento que actualiza valores de acción-estado:"),
+                     div(class = "equation",
+                         "Q(s,a) ← Q(s,a) + α[r + γ·max Q(s',a') - Q(s,a)]"
+                     ),
+                     tags$ul(
+                       tags$li("α: Tasa de aprendizaje (qué tan rápido aprende)"),
+                       tags$li("γ: Factor de descuento (importancia del futuro)"),
+                       tags$li("r: Recompensa inmediata"),
+                       tags$li("s': Estado siguiente")
+                     )
+                 ),
+                 
+                 div(class = "theory-box",
+                     h4("2. Dilema del Prisionero"),
+                     p("Juego clásico de teoría de juegos:"),
+                     tags$table(class = "table",
+                                tags$tr(tags$th(""), tags$th("Cooperar"), tags$th("Competir")),
+                                tags$tr(tags$td("Cooperar"), tags$td("(3,3)"), tags$td("(-1,5)")),
+                                tags$tr(tags$td("Competir"), tags$td("(5,-1)"), tags$td("(1,1)"))
+                     )
+                 ),
+                 
+                 div(class = "theory-box",
+                     h4("3. Estrategias Emergentes"),
+                     tags$ul(
+                       tags$li(strong("Cooperador:"), " Siempre coopera (>70% cooperación)"),
+                       tags$li(strong("Competidor:"), " Siempre compite (<30% cooperación)"),
+                       tags$li(strong("Mixto:"), " Alterna entre cooperar y competir")
+                     )
+                 )
+        ),
+        
+        # Tab 3: Aplicaciones
+        tabPanel("🔬 Aplicaciones",
+                 br(),
+                 h3("Aplicaciones del Mundo Real"),
+                 
+                 div(class = "theory-box",
+                     h4("💹 Mercados Financieros"),
+                     p("Trading algorítmico donde agentes aprenden estrategias óptimas de compra/venta."),
+                     p(em("Ejemplo: Prevención de flash crashes en bolsas de valores."))
+                 ),
+                 
+                 div(class = "theory-box",
+                     h4("⚡ Redes Eléctricas Inteligentes"),
+                     p("Optimización de consumo energético con prosumidores (productores-consumidores)."),
+                     p(em("Resultado: 20-30% reducción en picos de demanda."))
+                 ),
+                 
+                 div(class = "theory-box",
+                     h4("🌱 Ecosistemas"),
+                     p("Modelado de interacciones depredador-presa y evolución de especies."),
+                     p(em("Caso: Reintroducción de lobos en Yellowstone."))
+                 ),
+                 
+                 div(class = "theory-box",
+                     h4("📱 Redes Sociales"),
+                     p("Difusión de información y detección de fake news."),
+                     p(em("Aplicación: Algoritmos de recomendación en Twitter/Facebook."))
+                 )
+        ),
+        
+        # Tab 4: Referencias
+        tabPanel("📖 Referencias",
+                 br(),
+                 h3("Referencias Bibliográficas"),
+                 
+                 div(class = "theory-box",
+                     h4("Libros Fundamentales"),
+                     tags$ol(
+                       tags$li("Sutton, R. S., & Barto, A. G. (2018).", em("Reinforcement Learning: An Introduction."), "MIT Press."),
+                       tags$li("Axelrod, R. (1984).", em("The Evolution of Cooperation."), "Basic Books."),
+                       tags$li("Barabási, A. L. (2016).", em("Network Science."), "Cambridge University Press.")
+                     )
+                 ),
+                 
+                 div(class = "theory-box",
+                     h4("Artículos Clave"),
+                     tags$ol(
+                       tags$li("Watkins, C. J., & Dayan, P. (1992). Q-learning.", em("Machine Learning, 8(3-4),"), "279-292."),
+                       tags$li("Nowak, M. A. (2006). Five rules for the evolution of cooperation.", em("Science, 314,"), "1560-1563."),
+                       tags$li("Watts, D. J., & Strogatz, S. H. (1998). Collective dynamics of 'small-world' networks.", em("Nature, 393,"), "440-442.")
+                     )
+                 ),
+                 
+                 div(class = "theory-box",
+                     h4("Recursos Online"),
+                     tags$ul(
+                       tags$li(tags$a(href = "http://incompleteideas.net/book/the-book.html", 
+                                      "Libro gratuito de Sutton & Barto", target = "_blank")),
+                       tags$li(tags$a(href = "http://networksciencebook.com/", 
+                                      "Network Science Book (Barabási)", target = "_blank")),
+                       tags$li(tags$a(href = "https://www.coursera.org/specializations/reinforcement-learning",
+                                      "Curso de Reinforcement Learning (Coursera)", target = "_blank"))
+                     )
+                 )
+        )
+      )
+    )
+  )
+)
+
+# ============================================================================
+# SERVIDOR
+# ============================================================================
+
+server <- function(input, output, session) {
+  
+  # Variables reactivas
+  valores <- reactiveValues(
+    historia_recompensas = NULL,
+    historia_cooperacion = NULL,
+    agentes_finales = NULL
+  )
+  
+  # Simulación principal
+  observeEvent(input$simular, {
+    withProgress(message = 'Simulando...', value = 0, {
+      
+      agentes <- inicializar_agentes(input$n_agentes)
+      historia_r <- numeric(input$n_episodios)
+      historia_c <- numeric(input$n_episodios)
+      
+      for (ep in 1:input$n_episodios) {
+        incProgress(1/input$n_episodios)
+        
+        epsilon_actual <- input$epsilon * exp(-0.01 * ep)
+        resultado <- ejecutar_episodio(agentes, epsilon_actual, 
+                                       input$alpha, input$gamma)
+        agentes <- resultado$agentes
+        historia_r[ep] <- resultado$recompensa_promedio
+        
+        # Calcular cooperación
+        n_coop <- sum(sapply(agentes, function(a) a$estrategia == "Cooperador"))
+        historia_c[ep] <- (n_coop / input$n_agentes) * 100
+      }
+      
+      valores$historia_recompensas <- historia_r
+      valores$historia_cooperacion <- historia_c
+      valores$agentes_finales <- agentes
+    })
+  })
+  
+  # Outputs
+  output$val_cooperacion <- renderText({
+    if (is.null(valores$historia_cooperacion)) return("--")
+    paste0(round(tail(valores$historia_cooperacion, 1), 1), "%")
+  })
+  
+  output$val_recompensa <- renderText({
+    if (is.null(valores$historia_recompensas)) return("--")
+    round(mean(tail(valores$historia_recompensas, 10)), 2)
+  })
+  
+  output$val_convergencia <- renderText({
+    if (is.null(valores$historia_recompensas)) return("--")
+    h <- valores$historia_recompensas
+    for (i in 20:length(h)) {
+      if (sd(h[(i-19):i]) / mean(h[(i-19):i]) < 0.05) return(as.character(i))
+    }
+    return("No convergió")
+  })
+  
+  # Gráfico evolución
+  output$plot_evolucion <- renderPlotly({
+    req(valores$historia_recompensas)
+    
+    df <- data.frame(
+      episodio = 1:length(valores$historia_recompensas),
+      recompensa = valores$historia_recompensas,
+      cooperacion = valores$historia_cooperacion / 10
+    )
+    
+    plot_ly(df, x = ~episodio) %>%
+      add_trace(y = ~recompensa, name = 'Recompensa', type = 'scatter', mode = 'lines',
+                line = list(color = '#667eea', width = 2)) %>%
+      add_trace(y = ~cooperacion, name = 'Cooperación (%/10)', type = 'scatter', mode = 'lines',
+                line = list(color = '#06ffa5', width = 2)) %>%
+      layout(title = "Evolución del Aprendizaje",
+             xaxis = list(title = "Episodio"),
+             yaxis = list(title = "Valor"),
+             hovermode = 'x unified',
+             showlegend = TRUE)
+  })
+  
+  # Gráfico estrategias
+  output$plot_estrategias <- renderPlotly({
+    req(valores$agentes_finales)
+    
+    estrategias <- table(sapply(valores$agentes_finales, function(a) a$estrategia))
+    
+    plot_ly(labels = names(estrategias), values = as.numeric(estrategias), 
+            type = 'pie',
+            marker = list(colors = c('#06ffa5', '#ff6b9d', '#feca57'))) %>%
+      layout(title = "Distribución de Estrategias")
+  })
+  
+  # Matriz Q
+  output$plot_qmatrix <- renderPlotly({
+    req(valores$agentes_finales)
+    
+    q_avg <- Reduce("+", lapply(valores$agentes_finales, function(a) a$q_table)) / 
+      length(valores$agentes_finales)
+    
+    plot_ly(z = q_avg, type = "heatmap", colorscale = "Viridis",
+            x = c("Cooperar", "Competir"),
+            y = paste("Estado", 1:3)) %>%
+      layout(title = "Matriz Q Promedio",
+             xaxis = list(title = "Acción"),
+             yaxis = list(title = "Estado"))
+  })
+}
+
+# ============================================================================
+# EJECUTAR APP
+# ============================================================================
+
+shinyApp(ui = ui, server = server)
